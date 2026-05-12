@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfg.local/world.schema.json",
+  "title": "Text Adventure World v0.1",
+  "type": "object",
+  "required": ["meta", "start", "rooms", "items", "rules"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["name", "genre"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "genre": { "type": "string", "minLength": 1 },
+        "seed": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "start": {
+      "type": "object",
+      "required": ["room", "inventory", "flags"],
+      "properties": {
+        "room": { "type": "string", "minLength": 1 },
+        "inventory": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "flags": {
+          "type": "object",
+          "additionalProperties": { "type": ["boolean", "number", "string"] }
+        }
+      },
+      "additionalProperties": false
+    },
+    "rooms": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["desc", "exits", "items"],
+        "properties": {
+          "desc": { "type": "string" },
+          "exits": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "items": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "items": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["portable"],
+        "properties": {
+          "portable": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "then"],
+        "properties": {
+          "when": { "type": "string", "minLength": 1 },
+          "if": {
+            "type": "object",
+            "properties": {
+              "room": { "type": "string" },
+              "hasItem": { "type": "string" },
+              "flagEquals": {
+                "type": "array",
+                "prefixItems": [
+                  { "type": "string" },
+                  { "type": ["boolean", "number", "string"] }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "additionalProperties": false
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "setFlag": {
+                "type": "array",
+                "prefixItems": [
+                  { "type": "string" },
+                  { "type": ["boolean", "number", "string"] }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "moveTo": { "type": "string" },
+              "takeFromRoom": { "type": "string" },
+              "give": { "type": "string" },
+              "removeFromInventory": { "type": "string" },
+              "narration": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+services:
+  quest-webplayer:
+    image: ghcr.io/textadventures/quest-viva-webplayer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      Dev__Enabled: "true"
+      ASPNETCORE_ENVIRONMENT: "Development"
+    
+
+  bridge-api:
+    build:
+      context: ./docker/bridge
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      WEBPLAYER_URL: "http://quest-webplayer:8080"
+      QUEST_FILE_PATH: "/app/game.quest"
+    volumes:
+      - ./docker/quest-webplayer/data/game.quest:/app/game.quest:ro
+    depends_on:
+      - quest-webplayer
+  web-app:
+    build:
+      context: ./docker/web
+      dockerfile: Dockerfile
+    ports:
+      - "8100:5000"
+    environment:
+      BRIDGE_BASE: "http://bridge-api:8787"
+      QUEST_FILE_PATH: "/app/game.quest"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openai/gpt-4o-mini}"
+    depends_on:
+      - bridge-api

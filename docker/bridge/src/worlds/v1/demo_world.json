@@ -1,0 +1,46 @@
+{
+  "meta": { "name": "La Biblioteca Sellada", "genre": "mystery", "seed": 12345 },
+  "start": { "room": "hall", "inventory": ["flashlight"], "flags": { "door_open": false, "light_on": false } },
+  "rooms": {
+    "hall": {
+      "desc": "Un vestíbulo oscuro con una puerta al norte.",
+      "exits": { "north": "library" },
+      "items": ["key"]
+    },
+    "library": {
+      "desc": "Estanterías polvorientas. Hay una mesa al fondo.",
+      "exits": { "south": "hall", "east": "lab" },
+      "items": []
+    },
+    "lab": {
+      "desc": "Un pequeño laboratorio con frascos y etiquetas.",
+      "exits": { "west": "library" },
+      "items": ["note"]
+    }
+  },
+  "items": {
+    "flashlight": { "portable": true },
+    "key": { "portable": true },
+    "note": { "portable": true }
+  },
+  "rules": [
+    {
+      "when": "use(flashlight)",
+      "if": { "flagEquals": ["light_on", false] },
+      "then": { "setFlag": ["light_on", true], "narration": "La linterna se enciende e ilumina el entorno." }
+    },
+    {
+      "when": "use(key,door)",
+      "if": { "room": "hall", "flagEquals": ["door_open", false], "hasItem": "key" },
+      "then": {
+        "setFlag": ["door_open", true],
+        "narration": "La puerta hace clic: se ha desbloqueado."
+      }
+    },
+    {
+      "when": "move(north)",
+      "if": { "room": "hall", "flagEquals": ["door_open", true] },
+      "then": { "moveTo": "library", "narration": "Cruzas al otro lado y entras en la biblioteca." }
+    }
+  ]
+}

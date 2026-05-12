@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TFG - Chat Quest</title>
+</head>
+<body>
+
+    <h2>Chat con el juego</h2>
+
+    <div>
+        {% for msg in messages %}
+            {% if msg.role == "user" %}
+                <p><b>Tú:</b> {{ msg.content }}</p>
+            {% elif msg.role == "assistant" and msg.content %}
+                <p><b>IA:</b> {{ msg.content }}</p>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <hr>
+
+    <form method="POST">
+        <input type="text" name="message" style="width:300px;" required>
+        <button type="submit">Enviar</button>
+    </form>
+
+</body>
+</html>
