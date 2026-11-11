@@ -56,8 +56,8 @@ Array parse  -> 32;
 [ Main w1 w2 n;
   buffer->0 = 100;
   parse->0  = 10;
-  print "^MINIZORK -- original demo world for the TFG Frotz engine.^";
-  print "Commands: LOOK, NORTH/SOUTH/EAST/WEST, OPEN MAILBOX, READ LEAFLET, INVENTORY, QUIT.^";
+  print "^MINIZORK^^";
+  print "An original demo adventure.^";
   DescribeRoom();
   while (true) {
      print "^>";

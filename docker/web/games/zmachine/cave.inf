@@ -53,8 +53,8 @@ Array parse  -> 32;
 
 [ Main;
   buffer->0 = 100; parse->0 = 10;
-  print "^CAVE -- original demo for the TFG Frotz engine.^";
-  print "Find the treasure. Try: LOOK, TAKE LANTERN, LIGHT LANTERN, NORTH, TAKE KEY, UNLOCK GRATE, INVENTORY, QUIT.^";
+  print "^THE CAVE^^";
+  print "An original demo adventure. A treasure lies hidden somewhere within.^";
   DescribeRoom();
   while (true) {
     print "^>";

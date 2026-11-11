@@ -1,18 +1,11 @@
 """Interfaz web Flask: chat en lenguaje natural sobre los motores de aventura.
 
-Flujo: usuario -> LLM -> (tool calls controladas) -> motor -> resultado real ->
-role="tool" -> LLM -> respuesta final. El LLM nunca inventa el resultado; cada
-motor es la fuente de verdad.
+El LLM actua de NARRADOR: traduce la intencion del usuario a tool calls y narra
+en espanol el resultado real del motor (que es la fuente de verdad).
 
-Robustez:
-  * LOCK POR SESION (serializa peticiones de la misma sesion; un doble-envio no
-    corrompe el historial compartido).
-  * AUTO-REPARACION del historial antes de cada llamada (rellena tool_calls sin
-    respuesta para que el proveedor no devuelva 400). Una sesion nunca queda
-    "envenenada".
-  * Sesion POR USUARIO (cookie Flask).
-  * Logging opcional (DEBUG_LLM=1) de cada tool-call y su resultado.
-  * Ruta /reset para empezar de cero (y cerrar la partida activa).
+Robustez: lock por sesion + auto-reparacion del historial (evita el 400
+"tool_calls must be followed by tool messages"). Sesion por usuario (cookie).
+Logging opcional (DEBUG_LLM=1). Ruta /reset para empezar de cero.
 """
 import os
 import json
@@ -39,18 +32,30 @@ def _log(*a):
 SYSTEM_PROMPT = {
     "role": "system",
     "content": (
-        "Eres un asistente que permite jugar a aventuras conversacionales en "
-        "lenguaje natural. Hay varios motores (Quest y Frotz/Z-machine) y varios "
-        "juegos. Tu NO controlas el estado del juego ni inventas resultados: usas "
-        "siempre las herramientas y el motor es la fuente de verdad.\n"
-        "- Si el usuario quiere elegir o saber a que jugar, usa list_games.\n"
-        "- Para empezar un juego usa start_game(game_id) con el id EXACTO del "
-        "catalogo. Si no lo conoces, llama antes a list_games.\n"
-        "- Para jugar usa send_game_command con el comando en el dialecto del juego "
-        "(p.ej. 'open mailbox', 'east', 'read leaflet'); look y move son atajos.\n"
-        "- current_game indica que esta activo; close_game cierra la partida.\n"
-        "Tras ejecutar una accion, resume en lenguaje natural la salida real del "
-        "motor. Si el usuario solo saluda, responde con normalidad."
+        "Eres el NARRADOR de una aventura conversacional. El usuario juega en "
+        "lenguaje natural (espanol) y tu eres su interfaz con el juego.\n"
+        "\n"
+        "TU TRABAJO:\n"
+        "1) Interpreta lo que quiere hacer el usuario y ejecutalo con las tools.\n"
+        "2) Traduce su intencion al comando del juego (en ingles) y mandalo con "
+        "send_game_command: 'coge la linterna' -> 'take lantern'; 've al norte' -> "
+        "'north'; 'abre el buzon' -> 'open mailbox'.\n"
+        "3) Narra el RESULTADO real del motor en espanol, de forma inmersiva.\n"
+        "\n"
+        "REGLAS DE ESTILO (MUY IMPORTANTE):\n"
+        "- NUNCA muestres comandos del juego ni listas de comandos. Prohibido decir "
+        "'tienes disponible TAKE LANTERN' o 'comandos: look, north...'.\n"
+        "- Describe la SITUACION como un narrador. En vez de 'comando TAKE LANTERN "
+        "disponible', di 'hay una linterna posada sobre la mesa'.\n"
+        "- Traduce la salida tecnica (exits, listas de objetos, 'north/south/east/"
+        "west') a prosa natural: 'puedes ir al norte o al este', 'ves un pequeno buzon'.\n"
+        "- El motor es la FUENTE DE VERDAD: no inventes objetos, salidas ni "
+        "resultados. Si dudas, averigualo con look o send_game_command antes de afirmarlo.\n"
+        "- Tono de aventura, claro y breve; invita a actuar sin enumerar comandos.\n"
+        "\n"
+        "MENU: list_games (ver juegos), start_game(game_id) con el id EXACTO del "
+        "catalogo (si no lo sabes, llama antes a list_games), current_game, close_game. "
+        "Si el usuario solo saluda o pregunta algo general, responde con normalidad."
     ),
 }
 
@@ -73,8 +78,8 @@ def _lock_for(sid: str) -> threading.Lock:
 
 
 def _repair_history(messages: list) -> list:
-    """Garantiza que cada assistant con tool_calls va seguido de una respuesta
-    'tool' por cada tool_call_id. Repara historiales corrompidos."""
+    """Cada assistant con tool_calls debe ir seguido de una respuesta 'tool' por
+    cada tool_call_id. Repara historiales corrompidos insertando stubs."""
     repaired: list = []
     n = len(messages)
     i = 0

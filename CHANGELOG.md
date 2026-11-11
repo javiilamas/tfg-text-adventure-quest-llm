@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v2.4 — Narracion natural y voz robusta
+- 🗣️ El LLM ahora NARRA en lenguaje natural (system prompt reforzado): nunca
+  lista comandos; traduce la salida del motor a prosa ("hay una linterna posada
+  sobre la mesa" en vez de "comando TAKE LANTERN disponible").
+- 🎤 Boton de microfono **siempre reactivo**: ya no se desactiva nunca y muestra
+  el motivo exacto si falla (sin permiso, navegador sin soporte, etc.). Creacion
+  perezosa del reconocedor (evita que un error lo deje "muerto").
+- 🎮 Juegos demo con intro inmersiva (sin listar comandos): minizork, cave.
+
+
 ## v2.3 — Voz, segundo juego y calidad
 - 🎤🔊 **Voz**: text-to-speech (leer respuestas) y speech-to-text (hablar comandos)
   con la Web Speech API del navegador (sin servicios externos ni claves).
