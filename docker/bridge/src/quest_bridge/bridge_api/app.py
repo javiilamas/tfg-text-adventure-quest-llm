@@ -40,18 +40,54 @@ async def _get_text_area(page: Page) -> str:
 
 
 async def _find_command_input(page: Page):
-    """
-    Busca el input donde se escriben comandos en el WebPlayer.
-    Normalmente es el último input visible.
-    """
-    inputs = page.locator("input:visible")
-    count = await inputs.count()
+    selectors = [
+        "input[type='text']:visible",
+        "input:not([type='file']):visible",
+        "textarea:visible",
+        "[contenteditable='true']:visible",
+        "#txtCommand:visible",
+        ".cmdinput:visible",
+        ".commandinput:visible"
+    ]
 
-    if count == 0:
-        raise RuntimeError("No encuentro ningún input visible para escribir comandos.")
+    for selector in selectors:
+        locator = page.locator(selector)
+        count = await locator.count()
 
-    return inputs.nth(count - 1)
+        if count > 0:
+            print(f"Input encontrado con selector: {selector}", flush=True)
+            return locator.nth(count - 1)
 
+    body_text = await page.inner_text("body")
+    raise RuntimeError(
+        "No encuentro ningún input visible para escribir comandos. "
+        f"Texto visible en página: {body_text[:1000]}"
+    )
+
+async def _wait_until_game_ready(page: Page, timeout_seconds: int = 30):
+    for i in range(timeout_seconds):
+        body_text = await page.inner_text("body")
+
+        print(
+            f"Esperando a que el juego esté listo ({i + 1}/{timeout_seconds}): "
+            f"{body_text[:300]}",
+            flush=True
+        )
+
+        try:
+            await _find_command_input(page)
+            print("El juego ya tiene input de comandos visible.", flush=True)
+            return True
+        except Exception:
+            pass
+
+        if "You are in" in body_text or "You can go" in body_text or "Inventory" in body_text:
+            print("El juego parece cargado por texto visible.", flush=True)
+            return True
+
+        await page.wait_for_timeout(1000)
+
+    return False
 
 @app.get("/health")
 async def health():
@@ -118,10 +154,16 @@ async def session_new(body: NewSessionRequest):
                 f"Texto visible en página: {body_text[:1000]}"
             )
 
-        await page.wait_for_timeout(4000)
+        ready = await _wait_until_game_ready(page, timeout_seconds=30)
 
         final_text = await page.inner_text("body")
         print(f"Texto tras cargar juego: {final_text[:1000]}", flush=True)
+
+        if not ready:
+            raise RuntimeError(
+                "El archivo .quest se cargó, pero no apareció el input de comandos. "
+                f"Texto visible: {final_text[:1000]}"
+            )
 
         SESSIONS[body.sessionId] = {
             "playwright": p,
@@ -160,10 +202,19 @@ async def session_command(body: CommandRequest):
 
         before = await _get_text_area(page)
 
-        cmd_input = await _find_command_input(page)
-        await cmd_input.click()
-        await cmd_input.fill(body.text)
-        await cmd_input.press("Enter")
+        try:
+            cmd_input = await _find_command_input(page)
+            await cmd_input.click()
+            await cmd_input.fill(body.text)
+            await cmd_input.press("Enter")
+        except Exception as e:
+            after_error = await _get_text_area(page)
+
+            return {
+                "ok": False,
+                "error": str(e),
+                "output": after_error
+            }
 
         # Espera provisional. Más adelante puede sustituirse por estabilización del DOM.
         await page.wait_for_timeout(600)

@@ -1,8 +1,0 @@
-flask
-fastapi
-uvicorn
-requests
-httpx
-pydantic
-playwright
-mcp
