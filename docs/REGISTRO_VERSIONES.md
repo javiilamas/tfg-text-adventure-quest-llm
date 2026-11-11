@@ -14,7 +14,13 @@ menú gestionado por IA, interfaz de videojuego y voz. Cada versión documenta:
 | **Frotz v1** | Abstracción multi-motor + integración Frotz (Z-machine) | ✔ |
 | **Frotz v2** | Robustez de la capa web + Quest funcionando en Docker | ✔ |
 | **Frotz v3** | Interfaz de videojuego, voz, catálogo *drop-in*, tests | ✔ |
-| **Frotz v4** | Narración en lenguaje natural + dictado por voz fiable | ✔ (actual, 2026-06-30) |
+| **Frotz v4** | Narración en lenguaje natural + dictado por voz fiable | ✔ (2026-06-30) |
+| **Frotz v5** | Zork I compilado con ZILF | ✔ (entrega de julio de 2026) |
+| **Frotz v6** | Evaluación (pruebas, bancos, batería con el modelo) y correcciones | ✔ (versión entregada, 2026-11-11) |
+
+Cada versión está en el repositorio como un commit con su etiqueta (`quest-v4`,
+`frotz-v1`, `frotz-v3`, `frotz-v4`, `frotz-v5`, `frotz-v6` y `v1.0`); véase la
+tabla «Versiones» del `README.md`.
 
 ---
 
@@ -67,13 +73,14 @@ menú gestionado por IA, interfaz de videojuego y voz. Cada versión documenta:
   **voz** TTS/STT (Web Speech API); botón **reiniciar** + juego activo en cabecera;
   **logging** (`DEBUG_LLM`); **suite de tests offline** (intérprete falso, sin red);
   **segundo juego original** "La Cueva" (`cave.z5`, puzzle linterna+llave); docs.
-- **Decisión técnica:** voz 100% en el navegador (sin servicios ni claves);
+- **Decisión técnica:** voz con la Web Speech API del navegador (sin instalación ni
+  claves; en Chrome, el dictado se resuelve en un servidor del fabricante);
   catálogo se reescanea en cada `list_games` para reflejar archivos recién añadidos.
 - **Verificación:** 5 tests offline en verde; tool-calls probadas con varios juegos
   y sesiones simultáneas; descubrimiento por extensión validado.
 - **Archivos:** `templates/index.html`, `catalog.py`, `src/tests/*`, `games/*`, compose, docs.
 
-## Frotz v4 — Narración natural + voz fiable  *(versión actual, 2026-06-30)*
+## Frotz v4 — Narración natural + voz fiable  *(2026-06-30)*
 - **Objetivo:** que el LLM narre la situación en lenguaje natural (no liste comandos)
   y que el botón de micrófono funcione de forma fiable.
 - **Cambios:**
@@ -91,14 +98,62 @@ menú gestionado por IA, interfaz de videojuego y voz. Cada versión documenta:
 - **Archivos:** `web_app/app.py` (prompt), `templates/index.html` (voz),
   `games/zmachine/{minizork,cave}.{inf,z5}`.
 
+## Frotz v5 — Zork I  *(entrega de julio de 2026)*
+- **Objetivo:** jugar al Zork original.
+- **Cambios:** se añade `zork1.z3` a la carpeta de juegos. No hubo cambios de código:
+  el catálogo lo detecta por su extensión.
+- **Decisión técnica:** en noviembre de 2025 Microsoft publicó el código fuente ZIL
+  de Zork I, II y III con licencia MIT, así que el fichero de historia se compiló con
+  ZILF 1.9.0 (`zilf zork1.zil` y `zapf zork1.zap`) en lugar de usar una copia de
+  origen dudoso. La licencia se incluye junto al fichero.
+- **Verificación:** partida jugada de extremo a extremo desde la web.
+- **Archivos:** `games/zmachine/zork1.z3`.
+
+## Frotz v6 — Evaluación y correcciones  *(versión entregada, 2026-11-11)*
+- **Objetivo:** sustituir las afirmaciones cualitativas por medidas y cubrir con
+  pruebas los requisitos no funcionales. No añade funcionalidad.
+- **Cambios:**
+  - **Pruebas (de 5 a 16):** cuatro de la capa web con un modelo simulado (doble
+    envío concurrente, límite de pasos, error del proveedor, argumentos no válidos)
+    y siete de seguridad (rutas, herramientas inexistentes, metacaracteres de shell
+    y SAVE con el `dfrotz` real).
+  - **Bancos de pruebas:** `bench_engine.py` (latencia, concurrencia, memoria y
+    seguridad de Frotz) y `bench_quest.py` (latencia, concurrencia y memoria del
+    puente de Quest).
+  - **Batería de extremo a extremo:** `eval_llm.py` ejecuta 31 casos en lenguaje
+    natural (más cinco con Quest) con el modelo real, tres veces cada uno, y
+    comprueba el resultado contra el estado del motor.
+- **Defectos encontrados al medir y su corrección:**
+  1. SAVE, RESTORE y SCRIPT tardaban 12 s porque el indicador del intérprete no
+     termina en «>» → el lector reconoce también esos indicadores (12 s → 0,12 s).
+  2. Una orden de más de unos 100 caracteres hace que `dfrotz` redibuje la pantalla
+     → se eliminan los caracteres de control y se limita la longitud.
+  3. El hilo lector podía lanzar una excepción al cerrar la partida → se captura el
+     cierre del canal.
+  4. La web arrancaba con el depurador de Flask y la llamada al modelo no tenía
+     tiempo máximo → depurador solo con `FLASK_DEBUG=1` y límite de 60 s.
+  5. El puente de Quest esperaba 1,5 s fijos a que cargara el reproductor y, en
+     frío, no arrancaba → espera a que aparezca la caja de texto (máximo 30 s).
+- **Resultados principales:** 89 de 93 ejecuciones de la batería superadas (96 %);
+  2,79 s de media por turno; 121 ms por orden en Frotz y 832 ms en Quest; 20
+  sesiones simultáneas sin errores de aislamiento; 22 de 27 narraciones fieles a la
+  salida del motor. Los ficheros están en `docker/web/src/eval/resultados`.
+- **Revisión final (etiqueta `v1.0`):** `move` valida la dirección contra su esquema;
+  la clave de las cookies se genera al arrancar si no se configura; el puente no
+  expone los identificadores de sesión y su puerto solo se publica en el propio
+  equipo; `playwright` fijado a la versión de la imagen base; catálogo sin ruta por
+  defecto de Windows ni extensiones de Glulx; documentación y licencias.
+- **Archivos:** `src/tests/*`, `src/eval/*`, `engines/frotz_engine.py`,
+  `mcp_client.py`, `llm.py`, `web_app/app.py`, `bridge_api/app.py`, compose, docs.
+
 ---
 
-### Próximas versiones candidatas (roadmap)
-- **Frotz v5:** Zork I–III reales (script de compilación con ZILF) en la carpeta *drop-in*.
-- Guardar/cargar partida (`save`/`restore`) como tools de Frotz.
-- Puntuación y turnos reales (motor opcional con Jericho).
-- Servicio `frotz-api` separado (simetría con el Bridge de Quest).
-- Healthchecks en compose y maquetación móvil.
+### Líneas futuras
+- Generar juegos con IA (la tercera línea del enunciado, no abordada).
+- Integrar el núcleo de Quest Viva en un servicio propio, sin automatizar el navegador.
+- Contexto casi sin estado en lugar del historial completo.
+- Guardar y cargar partida como herramientas; puntuación y turnos reales (Jericho).
+- Servicio `frotz-api` separado, comprobaciones de salud en compose y maquetación móvil.
 
-> Convención: la versión actual se indica arriba en "Resumen" y en el título de la
-> última entrada. El historial breve y orientado a desarrollo está en `CHANGELOG.md`.
+> El historial breve está en `CHANGELOG.md`. El análisis completo de la evaluación
+> y de las limitaciones está en los capítulos 5 y 6 de la memoria.

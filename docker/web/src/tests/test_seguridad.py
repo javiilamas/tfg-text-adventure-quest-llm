@@ -43,11 +43,21 @@ class RouterSeguridadTest(unittest.TestCase):
         self.assertTrue(r["error"].startswith("UNKNOWN_GAME"))
 
     def test_comando_saneado(self):
-        """Caracteres de control fuera y longitud limitada (parche opcional)."""
+        """Caracteres de control fuera, longitud limitada y move restringido a
+        las direcciones de su esquema (correcciones de Frotz v6)."""
         if not hasattr(mcp_client, "_sanitize"):
             self.skipTest("parche de saneado no aplicado")
         self.assertEqual(mcp_client._sanitize("\x1b[2J\x07look"), "[2Jlook")
         self.assertEqual(len(mcp_client._sanitize("x" * 500)), mcp_client.MAX_COMMAND_LEN)
+        # move: el enrutador admite exactamente las direcciones del esquema...
+        from src.llm_client.tools import tools
+        esquema = next(t["function"] for t in tools if t["function"]["name"] == "move")
+        self.assertEqual(list(mcp_client.MOVE_DIRECTIONS),
+                         esquema["parameters"]["properties"]["direction"]["enum"])
+        # ...y rechaza cualquier otro texto antes de que llegue al motor.
+        for mala in ("north; touch /tmp/x", "look", "", None):
+            r = mcp_client.call_tool("move", {"direction": mala}, session_id="x")
+            self.assertEqual(r.get("error"), "INVALID_direction", mala)
 
     def test_tool_desconocida(self):
         r = mcp_client.call_tool("run_shell", {"cmd": "ls"}, session_id="x")

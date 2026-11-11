@@ -1,0 +1,12 @@
+# Memoria del contenedor del puente de Quest (bridge-api), 05/11/2026.
+# Salida de: docker stats --no-stream tfg_text_adventure-bridge-api-1
+
+# 1) En reposo, sin partidas abiertas:
+CONTAINER ID   NAME                              CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O   PIDS
+5aa10ec8ac27   tfg_text_adventure-bridge-api-1   0.37%     127.1MiB / 1.601GiB   7.76%     14.7MB / 274kB   0B / 0B     25
+
+# 2) Con 5 partidas abiertas (python -m src.eval.bench_quest --mantener 5):
+CONTAINER ID   NAME                              CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O   PIDS
+b5691522ed13   tfg_text_adventure-bridge-api-1   65.65%    442.3MiB / 1.601GiB   26.99%    21.2MB / 957kB   0B / 0B     445
+
+# (442,3 - 127,1) / 5 = 63 MiB por partida.

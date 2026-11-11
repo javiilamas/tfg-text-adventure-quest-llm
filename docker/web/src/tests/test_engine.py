@@ -14,6 +14,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 FAKE = os.path.join(os.path.dirname(__file__), "fake_frotz.py")
+# FrotzEngine lanza el interprete como un ejecutable. El bit de ejecucion se
+# pierde al copiar el proyecto desde Windows o al descomprimir un zip.
+try:
+    os.chmod(FAKE, os.stat(FAKE).st_mode | 0o111)
+except OSError:
+    pass
 os.environ.setdefault("OPENROUTER_API_KEY", "dummy")
 
 from src.llm_client.engines.frotz_engine import FrotzEngine          # noqa: E402

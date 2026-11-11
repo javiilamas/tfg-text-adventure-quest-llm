@@ -17,6 +17,11 @@ from .sessions import MANAGER
 # redibuja la pantalla, lo que ensucia la salida que recibe el LLM.
 MAX_COMMAND_LEN = 120
 
+# Direcciones que admite el atajo move: las mismas que declara su esquema en
+# tools.py. El esquema orienta al modelo, pero el proveedor no garantiza que lo
+# respete, asi que el valor se comprueba tambien aqui antes de llegar al motor.
+MOVE_DIRECTIONS = ("north", "south", "east", "west", "up", "down")
+
 
 def _sanitize(command: str) -> str:
     """Quita caracteres de control y limita la longitud del comando."""
@@ -54,7 +59,10 @@ def call_tool(name: str, args: dict | None = None, session_id: str = "web") -> d
         return MANAGER.look(session_id).to_dict()
 
     if name == "move":
-        direction = args.get("direction", "north")
+        direction = str(args.get("direction") or "").strip().lower()
+        if direction not in MOVE_DIRECTIONS:
+            return {"ok": False, "error": "INVALID_direction",
+                    "allowed": list(MOVE_DIRECTIONS)}
         return MANAGER.move(session_id, direction).to_dict()
 
     if name == "new_game":

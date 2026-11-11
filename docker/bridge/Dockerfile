@@ -1,3 +1,6 @@
+# La imagen trae los navegadores de Playwright 1.59.0. El paquete de Python
+# (requirements.txt) debe ser de esa MISMA version: si no coinciden,
+# Playwright no encuentra el ejecutable de Chromium.
 FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy
 
 WORKDIR /app

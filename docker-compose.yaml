@@ -13,13 +13,14 @@ services:
       context: ./docker/bridge
       dockerfile: Dockerfile
     ports:
-      - "8787:8787"
+      # Solo accesible desde el propio equipo: el Bridge no tiene autenticacion.
+      - "127.0.0.1:8787:8787"
     environment:
       WEBPLAYER_URL: "http://quest-webplayer:8080"
       QUEST_FILE_PATH: "/data/game.quest"
     volumes:
       # El .quest del tutorial (autoload del WebPlayer) y, ademas, los .quest que
-      # dejes en la carpeta drop-in (mismma ruta /app/games que ve la web).
+      # dejes en la carpeta drop-in (misma ruta /app/games que ve la web).
       - "./docker/quest-webplayer/data:/data:ro"
       - "./docker/web/games:/app/games:ro"
     depends_on:
@@ -39,7 +40,10 @@ services:
       FROTZ_BIN: "/usr/games/dfrotz"
       GAMES_ROOT: "/app/games"
       LLM_MAX_STEPS: "6"
-      FLASK_SECRET: "${FLASK_SECRET:-tfg-dev-secret-change-me}"
+      # DEBUG_LLM=1 en .env muestra en el registro las herramientas de cada turno.
+      DEBUG_LLM: "${DEBUG_LLM:-0}"
+      # Opcional. Vacio = la aplicacion genera una clave aleatoria al arrancar.
+      FLASK_SECRET: "${FLASK_SECRET:-}"
     volumes:
       # Carpeta drop-in de juegos: copia un .z5/.quest aqui y aparece sin rebuild.
       - "./docker/web/games:/app/games"

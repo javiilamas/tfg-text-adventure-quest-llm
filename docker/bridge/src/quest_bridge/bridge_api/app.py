@@ -49,10 +49,12 @@ async def _find_command_input(page: Page):
 
 @app.get("/health")
 async def health():
+    # Solo el numero de sesiones: sus identificadores permitirian a cualquiera
+    # que alcance este puerto enviar ordenes a la partida de otro jugador.
     return {
         "ok": True,
         "webplayer": WEBPLAYER_URL,
-        "sessions": list(SESSIONS.keys())
+        "sessions": len(SESSIONS)
     }
 
 

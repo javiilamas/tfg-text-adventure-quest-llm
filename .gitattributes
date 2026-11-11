@@ -1,0 +1,12 @@
+# Finales de linea LF en todos los ficheros de texto, tambien en Windows: los
+# scripts que se ejecutan dentro de los contenedores Linux (por ejemplo, el
+# interprete falso de las pruebas) no funcionan con CRLF.
+* text=auto eol=lf
+
+# Ficheros binarios
+*.z3 binary
+*.z5 binary
+*.z8 binary
+*.quest binary
+*.png binary
+*.pdf binary

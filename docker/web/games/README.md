@@ -20,6 +20,10 @@ El `id` del juego se deriva del nombre del fichero (p.ej. `zork1.z3` → id
 - Copia `zork1.z3` en `zmachine/` → en la web: *"juega a zork1"*.
 - Copia `mi_aventura.quest` en `quest/` → *"juega a mi_aventura"*.
 
-> Incluido de fábrica: `zmachine/minizork.z5` (demo original, ya jugable).
-> Para conseguir Zork I–III legalmente, compílalos con ZILF desde su código
-> fuente abierto (ver `zmachine/README.md`).
+> Incluidos: `zmachine/minizork.z5` y `zmachine/cave.z5` (juegos de demostración
+> propios) y `zmachine/zork1.z3` (Zork I, compilado con ZILF a partir de su
+> código fuente, publicado con licencia MIT). Véase `zmachine/README.md`.
+>
+> Limitación de Quest: el reproductor carga automáticamente el juego configurado
+> en `docker-compose.yaml`, así que un `.quest` copiado en `quest/` aparece en el
+> menú pero no llega a cargarse (capítulo 6 de la memoria).

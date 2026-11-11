@@ -1,0 +1,22 @@
+# Salida de bench_engine.py del 29/10/2026 (16:51 UTC), ANTES de aplicar las correcciones de Frotz v6.
+# Es la ejecucion de la que salen los ~12 s de SAVE citados en la memoria (seccion 5.4).
+# Su JSON se sobrescribio al repetir el banco con las correcciones (bench_engine.json).
+
+Entorno: {'python': '3.11.18', 'so': 'Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.41', 'cpu': 'x86_64', 'dfrotz': '/usr/games/dfrotz', 'fecha': '2026-10-29 16:51'}
+[latencia] zork1     arranque {'n': 10, 'media_ms': 140.5, 'p50_ms': 136.9, 'p95_ms': 178.8, 'max_ms': 178.8}  comando {'n': 120, 'media_ms': 121.2, 'p50_ms': 121.1, 'p95_ms': 121.8, 'max_ms': 122.2}  RSS 1143 kB
+[latencia] minizork  arranque {'n': 10, 'media_ms': 133.1, 'p50_ms': 133.0, 'p95_ms': 137.7, 'max_ms': 137.7}  comando {'n': 70, 'media_ms': 120.8, 'p50_ms': 120.8, 'p95_ms': 121.1, 'max_ms': 121.5}  RSS 1124 kB
+[latencia] cave      arranque {'n': 10, 'media_ms': 130.9, 'p50_ms': 131.2, 'p95_ms': 133.1, 'max_ms': 133.1}  comando {'n': 70, 'media_ms': 120.8, 'p50_ms': 120.7, 'p95_ms': 121.0, 'max_ms': 121.2}  RSS 1139 kB
+[concurrencia]  1 sesiones: {'n': 10, 'media_ms': 120.9, 'p50_ms': 120.9, 'p95_ms': 121.1, 'max_ms': 121.1, 'errores_aislamiento': 0, 'comandos_totales': 10, 'duracion_s': 1.47}
+[concurrencia]  5 sesiones: {'n': 50, 'media_ms': 120.8, 'p50_ms': 120.8, 'p95_ms': 121.1, 'max_ms': 121.3, 'errores_aislamiento': 0, 'comandos_totales': 50, 'duracion_s': 1.47}
+[concurrencia] 10 sesiones: {'n': 100, 'media_ms': 120.8, 'p50_ms': 120.8, 'p95_ms': 121.2, 'max_ms': 121.8, 'errores_aislamiento': 0, 'comandos_totales': 100, 'duracion_s': 1.51}
+[concurrencia] 20 sesiones: {'n': 200, 'media_ms': 120.7, 'p50_ms': 120.7, 'p95_ms': 120.9, 'max_ms': 121.1, 'errores_aislamiento': 0, 'comandos_totales': 200, 'duracion_s': 1.59}
+[seguridad] OK  Inyeccion ';'                       120 ms
+[seguridad] OK  Inyeccion $()                       121 ms
+[seguridad] OK  Inyeccion backticks                 121 ms
+[seguridad] OK  Tuberia                             121 ms
+[seguridad] OK  Salto de linea (look\nquit)         121 ms
+[seguridad] OK  SAVE: pide nombre de fichero      12020 ms
+[seguridad] OK  SAVE con ruta ../ y absoluta        122 ms
+[seguridad] OK  SAVE otra vez (mismo nombre)      11903 ms
+[seguridad] OK  SAVE: pregunta si sobrescribir    12025 ms
+[seguridad] OK  Confirmar sobrescritura             122 ms

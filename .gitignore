@@ -1,6 +1,20 @@
+# Claves y configuracion local: nunca al repositorio
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
+
+# Copias de seguridad
+*~
+*.bak
+*.antes_espera
+
+# Sistema operativo
 .DS_Store
+Thumbs.db

@@ -1,7 +1,8 @@
 """Catalogo de juegos con AUTODESCUBRIMIENTO.
 
 Basta con dejar un fichero de juego en la carpeta correspondiente y aparece solo
-(sin tocar codigo). El LLM solo ve id/name/engine, nunca rutas del sistema.
+(sin tocar codigo). El LLM solo ve id, nombre, motor y una descripcion breve,
+nunca rutas del sistema.
 
 Carpetas (dentro del contenedor, montadas desde ./docker/web/games):
   GAMES_ROOT/zmachine/  -> motor Frotz  (.z1 .. .z8, .zblorb, .zlb, .dat)
@@ -27,7 +28,7 @@ GAMES_ROOT = os.getenv("GAMES_ROOT", "/app/games")
 
 # Extensiones reconocidas por carpeta/motor.
 FROTZ_EXTS = {".z1", ".z2", ".z3", ".z4", ".z5", ".z6", ".z7", ".z8",
-              ".zblorb", ".zlb", ".dat", ".ulx", ".blb"}  # ulx/blb -> futuros motores
+              ".zblorb", ".zlb", ".dat"}
 QUEST_EXTS = {".quest"}
 
 _SCAN = [("zmachine", "frotz", FROTZ_EXTS), ("quest", "quest", QUEST_EXTS)]
@@ -40,11 +41,9 @@ _PRETTY = {
     "cave": "La Cueva (demo)",
 }
 
-# Quest conserva su comportamiento actual (ruta via QUEST_FILE_PATH).
-_QUEST_DEFAULT = os.getenv(
-    "QUEST_FILE_PATH",
-    r"C:\Users\lecle\Desktop\TFG\tfg-text-adventure-with-tests\src\quest-juegos\juego_prueba.quest",
-)
+# Juego de Quest incorporado: la ruta es la del fichero DENTRO del contenedor
+# del Bridge (ver los volumenes de docker-compose.yaml).
+_QUEST_DEFAULT = os.getenv("QUEST_FILE_PATH", "/data/game.quest")
 
 _BUILTIN = {
     "quest_tutorial": GameSpec(
@@ -70,7 +69,7 @@ def _discover() -> dict[str, GameSpec]:
         folder = os.path.join(GAMES_ROOT, sub)
         if not os.path.isdir(folder):
             continue
-        for fn in sorted(os.listdir(fn_dir := folder)):
+        for fn in sorted(os.listdir(folder)):
             stem, ext = os.path.splitext(fn)
             if ext.lower() not in exts:
                 continue

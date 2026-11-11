@@ -10,6 +10,7 @@ Logging opcional (DEBUG_LLM=1). Ruta /reset para empezar de cero.
 import os
 import json
 import uuid
+import secrets
 import threading
 
 from flask import Flask, render_template, request, session, redirect, url_for
@@ -18,7 +19,11 @@ from src.llm_client.llm import call_llm
 from src.llm_client.mcp_client import call_tool
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET", "tfg-dev-secret-change-me")
+# Clave con la que se firma la cookie de sesion. Si no se configura FLASK_SECRET
+# se genera una aleatoria en cada arranque: no hay un valor por defecto conocido
+# con el que falsificar cookies. (El estado vive en memoria, asi que las
+# sesiones se pierden al reiniciar en cualquier caso.)
+app.secret_key = os.getenv("FLASK_SECRET") or secrets.token_hex(32)
 
 MAX_STEPS = int(os.getenv("LLM_MAX_STEPS", "6"))
 DEBUG_LLM = os.getenv("DEBUG_LLM", "0") == "1"
