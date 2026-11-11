@@ -1,7 +1,13 @@
-"""Catalogo declarativo de juegos, independiente del codigo del LLM.
+"""Catalogo de juegos con AUTODESCUBRIMIENTO.
 
-Anadir un juego = anadir una entrada aqui + colocar el fichero. Cero cambios en
-las tools ni en Flask. El LLM solo ve id/name/engine, nunca rutas del sistema.
+Basta con dejar un fichero de juego en la carpeta correspondiente y aparece solo
+(sin tocar codigo). El LLM solo ve id/name/engine, nunca rutas del sistema.
+
+Carpetas (dentro del contenedor, montadas desde ./docker/web/games):
+  GAMES_ROOT/zmachine/  -> motor Frotz  (.z1 .. .z8, .zblorb, .zlb, .dat)
+  GAMES_ROOT/quest/     -> motor Quest  (.quest)
+
+Ademas hay un juego "incorporado" (quest_tutorial) por compatibilidad.
 """
 from __future__ import annotations
 import os
@@ -13,36 +19,74 @@ class GameSpec:
     id: str
     name: str
     engine: str          # "quest" | "frotz"
-    path: str            # ruta DENTRO del contenedor (o ruta que entiende el motor)
+    path: str
     description: str = ""
 
 
-# Quest conserva su comportamiento actual: la ruta sale de QUEST_FILE_PATH, igual
-# que el mcp_client original (no se cambia la integracion Quest existente).
+GAMES_ROOT = os.getenv("GAMES_ROOT", "/app/games")
+
+# Extensiones reconocidas por carpeta/motor.
+FROTZ_EXTS = {".z1", ".z2", ".z3", ".z4", ".z5", ".z6", ".z7", ".z8",
+              ".zblorb", ".zlb", ".dat", ".ulx", ".blb"}  # ulx/blb -> futuros motores
+QUEST_EXTS = {".quest"}
+
+_SCAN = [("zmachine", "frotz", FROTZ_EXTS), ("quest", "quest", QUEST_EXTS)]
+
+# Nombres bonitos para juegos conocidos (opcional; si no, se deriva del fichero).
+_PRETTY = {
+    "minizork": "MiniZork (demo)",
+    "zork1": "Zork I", "zork2": "Zork II", "zork3": "Zork III",
+    "advent": "Colossal Cave", "adventure": "Colossal Cave",
+    "cave": "La Cueva (demo)",
+}
+
+# Quest conserva su comportamiento actual (ruta via QUEST_FILE_PATH).
 _QUEST_DEFAULT = os.getenv(
     "QUEST_FILE_PATH",
     r"C:\Users\lecle\Desktop\TFG\tfg-text-adventure-with-tests\src\quest-juegos\juego_prueba.quest",
 )
-_MINIZORK_PATH = os.getenv("MINIZORK_PATH", "/app/games/zmachine/minizork.z5")
-_ZORK1_PATH = os.getenv("ZORK1_PATH", "/app/games/zmachine/zork1.z3")
 
-GAMES: dict[str, GameSpec] = {
+_BUILTIN = {
     "quest_tutorial": GameSpec(
         "quest_tutorial", "Quest Tutorial", "quest", _QUEST_DEFAULT,
-        "Tutorial de Quest Viva (motor Quest, via Bridge + Playwright)."),
-    "minizork": GameSpec(
-        "minizork", "MiniZork (demo)", "frotz", _MINIZORK_PATH,
-        "Mundo Z-machine de demostracion, original y listo para jugar con Frotz."),
-    "zork1": GameSpec(
-        "zork1", "Zork I", "frotz", _ZORK1_PATH,
-        "Zork I. Requiere anadir zork1.z3 (ver games/zmachine/README.md)."),
+        "Tutorial de Quest Viva (motor Quest)."),
 }
+
+
+def _slug(stem: str) -> str:
+    s = "".join(c.lower() if c.isalnum() else "_" for c in stem).strip("_")
+    return s or "game"
+
+
+def _pretty(stem: str) -> str:
+    return _PRETTY.get(stem.lower(), stem.replace("_", " ").replace("-", " ").title())
+
+
+def _discover() -> dict[str, GameSpec]:
+    """Devuelve {id: GameSpec} combinando los incorporados y los descubiertos.
+    Se vuelve a escanear en cada llamada para reflejar ficheros recien anadidos."""
+    games: dict[str, GameSpec] = dict(_BUILTIN)
+    for sub, engine, exts in _SCAN:
+        folder = os.path.join(GAMES_ROOT, sub)
+        if not os.path.isdir(folder):
+            continue
+        for fn in sorted(os.listdir(fn_dir := folder)):
+            stem, ext = os.path.splitext(fn)
+            if ext.lower() not in exts:
+                continue
+            gid = _slug(stem)
+            if gid in games:        # no pisar incorporados (p.ej. quest_tutorial)
+                continue
+            games[gid] = GameSpec(
+                gid, _pretty(stem), engine, os.path.join(folder, fn),
+                f"{engine.title()} — {fn}")
+    return games
 
 
 def list_games() -> list[dict]:
     return [{"id": g.id, "name": g.name, "engine": g.engine, "description": g.description}
-            for g in GAMES.values()]
+            for g in _discover().values()]
 
 
 def get_game(game_id: str) -> GameSpec | None:
-    return GAMES.get(game_id)
+    return _discover().get(game_id)

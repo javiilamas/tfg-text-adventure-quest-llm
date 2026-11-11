@@ -1,0 +1,109 @@
+! cave.inf - ORIGINAL second demo game for the TFG (Frotz engine). ASCII only.
+Constant Story "CAVE-DEMO";
+
+Global loc = 0;
+Global have_lamp = 0;
+Global lamp_lit = 0;
+Global have_key = 0;
+Global grate_open = 0;
+
+Array buffer -> 102;
+Array parse  -> 32;
+
+[ Has x i n;
+  n = parse->1; i = 1;
+  while (i <= n) { if (parse-->(2*i - 1) == x) rtrue; i++; }
+  rfalse;
+];
+
+[ Dark; if (loc ~= 0 && lamp_lit == 0) rtrue; rfalse; ];
+
+[ DescribeRoom;
+  if (Dark()) { print "^It is pitch black. You can't see a thing. You need a light.^"; return; }
+  switch (loc) {
+    0: print "^Cave Entrance^^";
+       print "You stand at the mouth of a cave; daylight filters in from the south.";
+       if (have_lamp == 0) print " A brass lantern rests on a rock here.";
+       print "^A dark passage leads north into the cave.^";
+    1: print "^Dark Cave^^";
+       print "A rough tunnel. The entrance is south; the passage continues north.^";
+    2: print "^Grate Room^^";
+       print "A rusty iron grate blocks the way north.";
+       if (have_key == 0) print " A small key lies on the ground.";
+       print "^The tunnel returns south.^";
+    3: print "^Treasure Room^^";
+       print "Heaps of gold and jewels fill the room. You found the treasure!^*** You win ***^";
+  }
+];
+
+[ Go dir to;
+  to = (-1);
+  switch (loc) {
+    0: if (dir=='north' or 'n' or 'in') to=1;
+       else if (dir=='south' or 's' or 'out') { print "You step into the daylight, then back inside.^"; return; }
+    1: if (dir=='south' or 's' or 'out') to=0;
+       else if (dir=='north' or 'n' or 'in') { if (Dark()) { print "It is too dark to go deeper.^"; return; } to=2; }
+    2: if (dir=='south' or 's') to=1;
+       else if (dir=='north' or 'n') { if (grate_open==0) { print "The iron grate is locked.^"; return; } to=3; }
+    3: if (dir=='south' or 's') to=2;
+  }
+  if (to == (-1)) { print "You can't go that way.^"; return; }
+  loc = to; DescribeRoom();
+];
+
+[ Main;
+  buffer->0 = 100; parse->0 = 10;
+  print "^CAVE -- original demo for the TFG Frotz engine.^";
+  print "Find the treasure. Try: LOOK, TAKE LANTERN, LIGHT LANTERN, NORTH, TAKE KEY, UNLOCK GRATE, INVENTORY, QUIT.^";
+  DescribeRoom();
+  while (true) {
+    print "^>";
+    read buffer parse;
+    if (parse->1 == 0) { print "Say something.^"; continue; }
+
+    if (Has('look') || Has('l')) { DescribeRoom(); continue; }
+    if (Has('inventory') || Has('i')) {
+        print "You are carrying:";
+        if (have_lamp) { print " a brass lantern"; if (lamp_lit) print " (lit)"; }
+        if (have_key) print " a small key";
+        if (have_lamp==0 && have_key==0) print " nothing";
+        print ".^"; continue;
+    }
+    if (Has('quit') || Has('q')) { print "Goodbye.^"; @quit; }
+
+    if ((Has('take') || Has('get') || Has('pick')) && (Has('lantern') || Has('lamp'))) {
+        if (loc==0 && have_lamp==0) { have_lamp=1; print "You take the brass lantern.^"; }
+        else if (have_lamp) print "You already have it.^";
+        else print "There is no lantern here.^";
+        continue;
+    }
+    if ((Has('light') || Has('on') || Has('turn')) && (Has('lantern') || Has('lamp'))) {
+        if (have_lamp==0) print "You have no lantern.^";
+        else if (lamp_lit) print "It is already lit.^";
+        else { lamp_lit=1; print "The lantern flares to life.^"; if (loc~=0) DescribeRoom(); }
+        continue;
+    }
+    if ((Has('take') || Has('get') || Has('pick')) && Has('key')) {
+        if (loc==2 && Dark()==0 && have_key==0) { have_key=1; print "You take the small key.^"; }
+        else if (have_key) print "You already have the key.^";
+        else print "You see no key here.^";
+        continue;
+    }
+    if ((Has('unlock') || Has('open')) && Has('grate')) {
+        if (loc~=2) print "There is no grate here.^";
+        else if (grate_open) print "The grate is already open.^";
+        else if (have_key==0) print "It's locked. You need a key.^";
+        else { grate_open=1; print "You unlock the grate with the key. It swings open.^"; }
+        continue;
+    }
+
+    if (Has('north')) { Go('north'); continue; }
+    if (Has('n'))     { Go('n'); continue; }
+    if (Has('south')) { Go('south'); continue; }
+    if (Has('s'))     { Go('s'); continue; }
+    if (Has('in'))    { Go('in'); continue; }
+    if (Has('out'))   { Go('out'); continue; }
+
+    print "I don't understand that command.^";
+  }
+];

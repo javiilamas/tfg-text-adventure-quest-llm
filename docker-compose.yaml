@@ -16,7 +16,12 @@ services:
       - "8787:8787"
     environment:
       WEBPLAYER_URL: "http://quest-webplayer:8080"
-      QUEST_FILE_PATH: "/app/src/quest-juegos/juego_prueba.quest"
+      QUEST_FILE_PATH: "/data/game.quest"
+    volumes:
+      # El .quest del tutorial (autoload del WebPlayer) y, ademas, los .quest que
+      # dejes en la carpeta drop-in (mismma ruta /app/games que ve la web).
+      - "./docker/quest-webplayer/data:/data:ro"
+      - "./docker/web/games:/app/games:ro"
     depends_on:
       - quest-webplayer
 
@@ -30,11 +35,13 @@ services:
       BRIDGE_BASE: "http://bridge-api:8787"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openai/gpt-4o-mini}"
-      # --- Frotz / multi-motor (nuevo) ---
+      QUEST_FILE_PATH: "/data/game.quest"
       FROTZ_BIN: "/usr/games/dfrotz"
-      MINIZORK_PATH: "/app/games/zmachine/minizork.z5"
-      ZORK1_PATH: "/app/games/zmachine/zork1.z3"
+      GAMES_ROOT: "/app/games"
       LLM_MAX_STEPS: "6"
       FLASK_SECRET: "${FLASK_SECRET:-tfg-dev-secret-change-me}"
+    volumes:
+      # Carpeta drop-in de juegos: copia un .z5/.quest aqui y aparece sin rebuild.
+      - "./docker/web/games:/app/games"
     depends_on:
       - bridge-api

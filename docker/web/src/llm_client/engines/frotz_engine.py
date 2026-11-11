@@ -133,6 +133,12 @@ class _FrotzProcess:
                     self.proc.kill()
         finally:
             self.alive = False
+            for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
+                try:
+                    if stream:
+                        stream.close()
+                except Exception:
+                    pass
 
 
 class FrotzEngine(GameEngine):

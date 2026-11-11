@@ -32,18 +32,12 @@ def _lock(session_id: str) -> asyncio.Lock:
 
 
 async def _get_text_area(page: Page) -> str:
-    """
-    Devuelve todo el texto visible del WebPlayer.
-    Más adelante se puede refinar para devolver solo la última respuesta.
-    """
+    """Devuelve todo el texto visible del WebPlayer."""
     return await page.inner_text("body")
 
 
 async def _find_command_input(page: Page):
-    """
-    Busca el input donde se escriben comandos en el WebPlayer.
-    Normalmente es el último input visible.
-    """
+    """Busca el input donde se escriben comandos (normalmente el ultimo visible)."""
     inputs = page.locator("input:visible")
     count = await inputs.count()
 
@@ -87,51 +81,55 @@ async def session_new(body: NewSessionRequest):
         await page.goto(WEBPLAYER_URL, wait_until="networkidle")
         await page.wait_for_timeout(1500)
 
-        # Intento 1: cargar directamente mediante input[type=file].
-        # Esta es la forma más robusta si el input existe en el DOM.
-        file_input = page.locator('input[type="file"]')
+        # El WebPlayer autocarga el juego indicado en Home__File. Si ya esta
+        # cargado, habra un input de comando visible y NO hace falta subir nada.
+        already_loaded = False
+        try:
+            if await page.locator("input:visible").count() > 0:
+                already_loaded = True
+        except Exception:
+            already_loaded = False
 
-        if await file_input.count() > 0:
-            await file_input.first.set_input_files(body.questFilePath)
+        if not already_loaded:
+            # Carga manual del .quest. Requiere que el fichero exista DENTRO de
+            # este contenedor (ver volumen + QUEST_FILE_PATH en docker-compose).
+            file_input = page.locator('input[type="file"]')
 
-        else:
-            # Intento 2: buscar botón/enlace visible para abrir selector de archivos.
-            # No usamos "Browse" porque en Quest Viva aparece en un texto oculto/fallback.
-            candidates = [
-                "Open a file",
-                "Open file",
-                "Choose file"
-            ]
+            if await file_input.count() > 0:
+                await file_input.first.set_input_files(body.questFilePath)
 
-            loaded = False
+            else:
+                candidates = ["Open a file", "Open file", "Choose file"]
+                loaded = False
 
-            for text in candidates:
-                locator = page.get_by_text(text, exact=False)
-                count = await locator.count()
+                for text in candidates:
+                    locator = page.get_by_text(text, exact=False)
+                    count = await locator.count()
 
-                for i in range(count):
-                    candidate = locator.nth(i)
+                    for i in range(count):
+                        candidate = locator.nth(i)
 
-                    if await candidate.is_visible():
-                        async with page.expect_file_chooser() as fc_info:
-                            await candidate.click()
+                        if await candidate.is_visible():
+                            async with page.expect_file_chooser() as fc_info:
+                                await candidate.click()
 
-                        chooser = await fc_info.value
-                        await chooser.set_files(body.questFilePath)
-                        loaded = True
+                            chooser = await fc_info.value
+                            await chooser.set_files(body.questFilePath)
+                            loaded = True
+                            break
+
+                    if loaded:
                         break
 
-                if loaded:
-                    break
+                if not loaded:
+                    body_text = await page.inner_text("body")
+                    raise RuntimeError(
+                        "No encontré input[type=file] ni botón visible para cargar archivo, "
+                        "y el juego no parecía autocargado. "
+                        f"Texto visible en página: {body_text[:800]}"
+                    )
 
-            if not loaded:
-                body_text = await page.inner_text("body")
-                raise RuntimeError(
-                    "No encontré input[type=file] ni botón visible para cargar archivo. "
-                    f"Texto visible en página: {body_text[:1000]}"
-                )
-
-        # Damos tiempo a que Quest cargue el juego.
+        # Damos tiempo a que Quest termine de preparar la partida.
         await page.wait_for_timeout(2500)
 
         SESSIONS[body.sessionId] = {
@@ -144,7 +142,7 @@ async def session_new(body: NewSessionRequest):
         return {
             "ok": True,
             "sessionId": body.sessionId,
-            "message": "Quest loaded in WebPlayer"
+            "message": "Quest ready (autoloaded)" if already_loaded else "Quest loaded in WebPlayer"
         }
 
     except Exception as e:
@@ -175,7 +173,7 @@ async def session_command(body: CommandRequest):
         await cmd_input.fill(body.text)
         await cmd_input.press("Enter")
 
-        # Espera provisional. Más adelante puede sustituirse por estabilización del DOM.
+        # Espera provisional. Puede sustituirse por estabilizacion del DOM.
         await page.wait_for_timeout(600)
 
         after = await _get_text_area(page)

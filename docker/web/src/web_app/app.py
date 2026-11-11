@@ -1,20 +1,25 @@
 """Interfaz web Flask: chat en lenguaje natural sobre los motores de aventura.
 
 Flujo: usuario -> LLM -> (tool calls controladas) -> motor -> resultado real ->
-role="tool" -> LLM -> respuesta final. El LLM NUNCA inventa el resultado del
-juego; cada motor es la fuente de verdad.
+role="tool" -> LLM -> respuesta final. El LLM nunca inventa el resultado; cada
+motor es la fuente de verdad.
 
-Mejoras respecto a la version anterior:
-  * Bucle multi-tool (run_llm_tool_loop) con max_steps: encadena varias tools
-    (p.ej. start_game -> look) respondiendo a CADA tool_call_id, evitando el
-    error "assistant message with tool_calls must be followed by tool messages".
-  * Sesion POR USUARIO (cookie Flask), no un unico estado global.
+Robustez:
+  * LOCK POR SESION (serializa peticiones de la misma sesion; un doble-envio no
+    corrompe el historial compartido).
+  * AUTO-REPARACION del historial antes de cada llamada (rellena tool_calls sin
+    respuesta para que el proveedor no devuelva 400). Una sesion nunca queda
+    "envenenada".
+  * Sesion POR USUARIO (cookie Flask).
+  * Logging opcional (DEBUG_LLM=1) de cada tool-call y su resultado.
+  * Ruta /reset para empezar de cero (y cerrar la partida activa).
 """
 import os
 import json
 import uuid
+import threading
 
-from flask import Flask, render_template, request, session
+from flask import Flask, render_template, request, session, redirect, url_for
 
 from src.llm_client.llm import call_llm
 from src.llm_client.mcp_client import call_tool
@@ -23,6 +28,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "tfg-dev-secret-change-me")
 
 MAX_STEPS = int(os.getenv("LLM_MAX_STEPS", "6"))
+DEBUG_LLM = os.getenv("DEBUG_LLM", "1") == "1"
+
+
+def _log(*a):
+    if DEBUG_LLM:
+        print("[web]", *a, flush=True)
+
 
 SYSTEM_PROMPT = {
     "role": "system",
@@ -32,7 +44,8 @@ SYSTEM_PROMPT = {
         "juegos. Tu NO controlas el estado del juego ni inventas resultados: usas "
         "siempre las herramientas y el motor es la fuente de verdad.\n"
         "- Si el usuario quiere elegir o saber a que jugar, usa list_games.\n"
-        "- Para empezar un juego usa start_game(game_id).\n"
+        "- Para empezar un juego usa start_game(game_id) con el id EXACTO del "
+        "catalogo. Si no lo conoces, llama antes a list_games.\n"
         "- Para jugar usa send_game_command con el comando en el dialecto del juego "
         "(p.ej. 'open mailbox', 'east', 'read leaflet'); look y move son atajos.\n"
         "- current_game indica que esta activo; close_game cierra la partida.\n"
@@ -41,8 +54,9 @@ SYSTEM_PROMPT = {
     ),
 }
 
-# Estado por sesion de navegador: sid -> {"messages": [...], "chat": [...]}
 _STATE: dict[str, dict] = {}
+_LOCKS: dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
 
 
 def _state(sid: str) -> dict:
@@ -51,13 +65,53 @@ def _state(sid: str) -> dict:
     return _STATE[sid]
 
 
-def run_llm_tool_loop(sid: str, max_steps: int = MAX_STEPS) -> str:
-    messages = _state(sid)["messages"]
+def _lock_for(sid: str) -> threading.Lock:
+    with _LOCKS_GUARD:
+        if sid not in _LOCKS:
+            _LOCKS[sid] = threading.Lock()
+        return _LOCKS[sid]
 
-    for _ in range(max_steps):
-        response = call_llm(messages)
+
+def _repair_history(messages: list) -> list:
+    """Garantiza que cada assistant con tool_calls va seguido de una respuesta
+    'tool' por cada tool_call_id. Repara historiales corrompidos."""
+    repaired: list = []
+    n = len(messages)
+    i = 0
+    while i < n:
+        m = messages[i]
+        repaired.append(m)
+        if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls"):
+            ids = [tc.get("id") for tc in m["tool_calls"] if isinstance(tc, dict) and tc.get("id")]
+            answered = set()
+            j = i + 1
+            while j < n and isinstance(messages[j], dict) and messages[j].get("role") == "tool":
+                repaired.append(messages[j])
+                answered.add(messages[j].get("tool_call_id"))
+                j += 1
+            for cid in ids:
+                if cid not in answered:
+                    repaired.append({
+                        "role": "tool",
+                        "tool_call_id": cid,
+                        "content": json.dumps({"ok": False, "error": "respuesta_reparada"},
+                                              ensure_ascii=False),
+                    })
+            i = j
+            continue
+        i += 1
+    return repaired
+
+
+def run_llm_tool_loop(sid: str, max_steps: int = MAX_STEPS) -> str:
+    st = _state(sid)
+
+    for step in range(max_steps):
+        st["messages"] = _repair_history(st["messages"])
+        response = call_llm(st["messages"])
 
         if isinstance(response, dict) and "error" in response and "choices" not in response:
+            _log("LLM error:", response.get("error"))
             return f"Error en la llamada al LLM: {response['error']}"
 
         choices = response.get("choices", [])
@@ -66,33 +120,43 @@ def run_llm_tool_loop(sid: str, max_steps: int = MAX_STEPS) -> str:
 
         msg = choices[0].get("message", {})
 
-        # Sin tool_calls -> respuesta final
         if not msg.get("tool_calls"):
-            messages.append(msg)
+            st["messages"].append(msg)
             return msg.get("content") or "Sin respuesta."
 
-        # Hay tool_calls: hay que responder a CADA tool_call_id
-        messages.append(msg)
+        st["messages"].append(msg)
         for tool_call in msg["tool_calls"]:
-            tool_name = tool_call["function"]["name"]
+            try:
+                tool_name = tool_call["function"]["name"]
+            except Exception:
+                tool_name = ""
             try:
                 tool_args = json.loads(tool_call["function"].get("arguments", "{}") or "{}")
             except Exception:
                 tool_args = {}
 
+            _log(f"step {step+1} tool:", tool_name, tool_args)
             try:
                 result = call_tool(tool_name, tool_args, session_id=sid)
             except Exception as e:
                 result = {"ok": False, "error": str(e)}
+            _log("  ->", json.dumps(result, ensure_ascii=False)[:300])
 
-            messages.append({
+            st["messages"].append({
                 "role": "tool",
-                "tool_call_id": tool_call["id"],
+                "tool_call_id": tool_call.get("id", ""),
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
     return ("He ejecutado varias herramientas pero el modelo no produjo una "
             "respuesta final (posible bucle de tool-calls).")
+
+
+def _current(sid: str) -> dict:
+    try:
+        return call_tool("current_game", {}, session_id=sid)
+    except Exception:
+        return {"active": False}
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -105,12 +169,27 @@ def index():
     if request.method == "POST":
         user_input = request.form.get("message", "").strip()
         if user_input:
-            st["chat"].append({"role": "user", "content": user_input})
-            st["messages"].append({"role": "user", "content": user_input})
-            final_text = run_llm_tool_loop(sid)
-            st["chat"].append({"role": "assistant", "content": final_text})
+            with _lock_for(sid):
+                st["chat"].append({"role": "user", "content": user_input})
+                st["messages"].append({"role": "user", "content": user_input})
+                final_text = run_llm_tool_loop(sid)
+                st["chat"].append({"role": "assistant", "content": final_text})
 
-    return render_template("index.html", messages=st["chat"])
+    return render_template("index.html", messages=st["chat"], current=_current(sid))
+
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    sid = session.get("sid")
+    if sid:
+        with _lock_for(sid):
+            try:
+                call_tool("close_game", {}, session_id=sid)
+            except Exception:
+                pass
+            _STATE.pop(sid, None)
+        _log("session reset:", sid)
+    return redirect(url_for("index"))
 
 
 if __name__ == "__main__":
