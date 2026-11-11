@@ -1,0 +1,20 @@
+{
+  "_descripcion": "Casos de la batería con el motor Quest (juego quest_tutorial). Mismo formato que casos_llm.json. Se ejecutan con: python -m src.eval.eval_llm --casos src/eval/casos_quest.json --repeticiones 3",
+  "casos": [
+    {"id": "Q01", "categoria": "quest", "juego": "quest_tutorial",
+     "turnos": ["mira a tu alrededor"],
+     "comando_regex": "^(look|l|look around)$"},
+    {"id": "Q02", "categoria": "quest", "juego": "quest_tutorial",
+     "turnos": ["¿qué llevo encima?"],
+     "comando_regex": "^(inventory|i|inv)$"},
+    {"id": "Q03", "categoria": "quest", "juego": "quest_tutorial",
+     "turnos": ["ve hacia el este"],
+     "comando_regex": "^(go )?(east|e)$"},
+    {"id": "Q04", "categoria": "quest", "juego": "quest_tutorial", "revision_manual": true,
+     "turnos": ["cojo la espada mágica que hay en el suelo"],
+     "respuesta_no_regex": "(coges|has cogido|ya tienes|ahora tienes|empuñas).{0,40}espada"},
+    {"id": "Q05", "categoria": "quest", "juego": "quest_tutorial",
+     "turnos": ["quiero cambiar a Zork"],
+     "tools_esperadas": ["start_game"], "juego_activo": "zork1"}
+  ]
+}

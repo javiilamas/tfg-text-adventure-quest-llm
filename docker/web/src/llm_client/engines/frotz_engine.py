@@ -19,6 +19,7 @@ comandos del sistema operativo.
 """
 from __future__ import annotations
 import os
+import re
 import time
 import queue
 import shutil
@@ -27,8 +28,17 @@ import subprocess
 from .base import GameEngine, EngineResult
 
 
+# Prompts del propio interprete (no del juego) que NO terminan en ">":
+# "Please enter a filename [zork1.qzl]:" (SAVE/RESTORE/SCRIPT) y
+# "Overwrite existing file?". Sin esto el lector esperaba el timeout completo
+# (12 s) antes de devolver la salida.
+_INTERP_PROMPT = re.compile(r"(filename \[[^\]]*\]:|Overwrite existing file\?)\s*$",
+                            re.IGNORECASE)
+
+
 def _looks_like_prompt(text: str, prompt: str) -> bool:
-    return text.rstrip().endswith(prompt)
+    t = text.rstrip()
+    return t.endswith(prompt) or bool(_INTERP_PROMPT.search(t))
 
 
 def _clean(text: str, prompt: str = ">") -> str:
@@ -76,6 +86,8 @@ class _FrotzProcess:
                 if ch == "":
                     break
                 self._q.put(ch)
+        except (ValueError, OSError):
+            pass  # close() cerro el pipe mientras leiamos: fin normal
         finally:
             self.alive = False
             self._q.put(None)  # centinela EOF

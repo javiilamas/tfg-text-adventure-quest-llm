@@ -79,7 +79,12 @@ async def session_new(body: NewSessionRequest):
         page = await context.new_page()
 
         await page.goto(WEBPLAYER_URL, wait_until="networkidle")
-        await page.wait_for_timeout(1500)
+        # Espera a que el reproductor termine de cargar el juego (aparece la caja
+        # de texto) en lugar de un tiempo fijo: en frio puede tardar varios segundos.
+        try:
+            await page.wait_for_selector("input:visible", timeout=30000)
+        except Exception:
+            pass
 
         # El WebPlayer autocarga el juego indicado en Home__File. Si ya esta
         # cargado, habra un input de comando visible y NO hace falta subir nada.

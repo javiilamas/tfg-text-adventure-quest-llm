@@ -21,7 +21,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "tfg-dev-secret-change-me")
 
 MAX_STEPS = int(os.getenv("LLM_MAX_STEPS", "6"))
-DEBUG_LLM = os.getenv("DEBUG_LLM", "1") == "1"
+DEBUG_LLM = os.getenv("DEBUG_LLM", "0") == "1"
 
 
 def _log(*a):
@@ -198,4 +198,6 @@ def reset():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # El depurador de Werkzeug permite ejecutar codigo desde el navegador: solo
+    # se activa si se pide explicitamente (FLASK_DEBUG=1), nunca por defecto.
+    app.run(host="0.0.0.0", port=5000, debug=os.getenv("FLASK_DEBUG", "0") == "1")

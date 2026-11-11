@@ -13,6 +13,16 @@ from __future__ import annotations
 from .catalog import list_games as catalog_list_games
 from .sessions import MANAGER
 
+# Longitud maxima de un comando de juego. dfrotz trunca las lineas largas y
+# redibuja la pantalla, lo que ensucia la salida que recibe el LLM.
+MAX_COMMAND_LEN = 120
+
+
+def _sanitize(command: str) -> str:
+    """Quita caracteres de control y limita la longitud del comando."""
+    command = "".join(c for c in command if c.isprintable())
+    return command[:MAX_COMMAND_LEN].strip()
+
 
 def call_tool(name: str, args: dict | None = None, session_id: str = "web") -> dict:
     args = args or {}
@@ -35,7 +45,7 @@ def call_tool(name: str, args: dict | None = None, session_id: str = "web") -> d
         return {"ok": True, "closed": True}
 
     if name == "send_game_command":
-        command = (args.get("command") or "").strip()
+        command = _sanitize(args.get("command") or "")
         if not command:
             return {"ok": False, "error": "MISSING_command"}
         return MANAGER.send_command(session_id, command).to_dict()
