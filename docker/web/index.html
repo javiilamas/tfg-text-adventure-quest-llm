@@ -4,27 +4,21 @@
     <title>TFG - Chat Quest</title>
 </head>
 <body>
+
     <h2>Chat con el juego</h2>
 
     <div>
-        {% for msg in messages %}
-            {% if msg.role == "user" %}
-                <p><b>Tú:</b> {{ msg.content }}</p>
-            {% elif msg.role == "assistant" %}
-                <p><b>IA:</b> {{ msg.content }}</p>
-            {% endif %}
-        {% endfor %}
+        
+            
+        
     </div>
 
     <hr>
 
     <form method="POST">
-        <input type="text" name="message" style="width:400px;" required autofocus>
+        <input type="text" name="message" style="width:300px;" required>
         <button type="submit">Enviar</button>
     </form>
 
-    <form method="POST" action="/reset" style="margin-top:10px;">
-        <button type="submit">Reiniciar chat</button>
-    </form>
 </body>
 </html>

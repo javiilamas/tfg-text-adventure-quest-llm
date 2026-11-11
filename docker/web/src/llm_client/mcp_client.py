@@ -1,78 +1,55 @@
-import os
-import requests
+"""Router de tools.
 
-BASE_URL = os.getenv("BRIDGE_BASE", "http://127.0.0.1:8787")
+Traduce cada tool del LLM a una operacion del SessionManager, que a su vez la
+delega al motor activo (Quest o Frotz). Se mantiene el nombre `call_tool` y la
+firma compatible con la version anterior (con un session_id opcional anadido
+para soportar multiples usuarios/partidas).
 
-QUEST_FILE_PATH = os.getenv(
-    "QUEST_FILE_PATH",
-    "/app/game.quest"
-)
+IMPORTANTE: ninguna tool ejecuta comandos del sistema. send_game_command solo
+escribe texto en la entrada del motor del juego.
+"""
+from __future__ import annotations
 
-
-def send_command(text):
-    return requests.post(
-        f"{BASE_URL}/session/command",
-        json={
-            "sessionId": "demo",
-            "text": text
-        }
-    ).json()
+from .catalog import list_games as catalog_list_games
+from .sessions import MANAGER
 
 
-def call_tool(name, args):
-    if name == "new_game":
-        return requests.post(
-            f"{BASE_URL}/session/new",
-            json={
-                "sessionId": "demo",
-                "questFilePath": QUEST_FILE_PATH
-            }
-        ).json()
+def call_tool(name: str, args: dict | None = None, session_id: str = "web") -> dict:
+    args = args or {}
+
+    if name == "list_games":
+        return {"games": catalog_list_games()}
+
+    if name == "start_game":
+        game_id = args.get("game_id")
+        if not game_id:
+            return {"ok": False, "error": "MISSING_game_id", "games": catalog_list_games()}
+        return MANAGER.start_game(session_id, game_id).to_dict()
+
+    if name == "current_game":
+        cur = MANAGER.current(session_id)
+        return {"active": cur is not None, **(cur or {})}
+
+    if name == "close_game":
+        MANAGER.close(session_id)
+        return {"ok": True, "closed": True}
+
+    if name == "send_game_command":
+        command = (args.get("command") or "").strip()
+        if not command:
+            return {"ok": False, "error": "MISSING_command"}
+        return MANAGER.send_command(session_id, command).to_dict()
 
     if name == "look":
-        return send_command("look")
+        return MANAGER.look(session_id).to_dict()
 
     if name == "move":
         direction = args.get("direction", "north")
-        return send_command(f"go {direction}")
+        return MANAGER.move(session_id, direction).to_dict()
 
-    if name == "inventory":
-        return send_command("inventory")
+    if name == "new_game":
+        cur = MANAGER.current(session_id)
+        game_id = (cur or {}).get("game_id", "quest_tutorial")
+        return MANAGER.start_game(session_id, game_id).to_dict()
 
-    if name == "examine":
-        target = args.get("target", "")
-        return send_command(f"examine {target}")
-
-    if name == "take":
-        item = args.get("item", "")
-        return send_command(f"take {item}")
-
-    if name == "drop":
-        item = args.get("item", "")
-        return send_command(f"drop {item}")
-
-    if name == "use":
-        item = args.get("item", "")
-        target = args.get("target", "")
-
-        if target:
-            return send_command(f"use {item} on {target}")
-
-        return send_command(f"use {item}")
-
-    if name == "open":
-        target = args.get("target", "")
-        return send_command(f"open {target}")
-
-    if name == "close":
-        target = args.get("target", "")
-        return send_command(f"close {target}")
-
-    if name == "read":
-        target = args.get("target", "")
-        return send_command(f"read {target}")
-
-    return {
-        "ok": False,
-        "error": f"Tool no implementada: {name}"
-    }
+    return {"ok": False, "error": f"UNKNOWN_TOOL: {name}"}

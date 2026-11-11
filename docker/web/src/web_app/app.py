@@ -1,179 +1,117 @@
+"""Interfaz web Flask: chat en lenguaje natural sobre los motores de aventura.
+
+Flujo: usuario -> LLM -> (tool calls controladas) -> motor -> resultado real ->
+role="tool" -> LLM -> respuesta final. El LLM NUNCA inventa el resultado del
+juego; cada motor es la fuente de verdad.
+
+Mejoras respecto a la version anterior:
+  * Bucle multi-tool (run_llm_tool_loop) con max_steps: encadena varias tools
+    (p.ej. start_game -> look) respondiendo a CADA tool_call_id, evitando el
+    error "assistant message with tool_calls must be followed by tool messages".
+  * Sesion POR USUARIO (cookie Flask), no un unico estado global.
+"""
+import os
 import json
-import threading
-from flask import Flask, render_template, request, redirect, url_for
+import uuid
+
+from flask import Flask, render_template, request, session
 
 from src.llm_client.llm import call_llm
 from src.llm_client.mcp_client import call_tool
 
-
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET", "tfg-dev-secret-change-me")
 
-chat_history = []
+MAX_STEPS = int(os.getenv("LLM_MAX_STEPS", "6"))
 
-messages = [
-    {
-        "role": "system",
-        "content": (
-            "Eres un agente que juega a una aventura de texto. "
-            "Puedes usar herramientas como new_game, look y move cuando sea necesario. "
-            "Si el usuario solo saluda o pregunta algo normal, responde directamente. "
-            "Cuando inicies una partida, usa new_game y después usa look para describir "
-            "el estado inicial. "
-            "No inventes el estado del juego: basa tu respuesta en el resultado de las herramientas."
-        )
-    }
-]
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "Eres un asistente que permite jugar a aventuras conversacionales en "
+        "lenguaje natural. Hay varios motores (Quest y Frotz/Z-machine) y varios "
+        "juegos. Tu NO controlas el estado del juego ni inventas resultados: usas "
+        "siempre las herramientas y el motor es la fuente de verdad.\n"
+        "- Si el usuario quiere elegir o saber a que jugar, usa list_games.\n"
+        "- Para empezar un juego usa start_game(game_id).\n"
+        "- Para jugar usa send_game_command con el comando en el dialecto del juego "
+        "(p.ej. 'open mailbox', 'east', 'read leaflet'); look y move son atajos.\n"
+        "- current_game indica que esta activo; close_game cierra la partida.\n"
+        "Tras ejecutar una accion, resume en lenguaje natural la salida real del "
+        "motor. Si el usuario solo saluda, responde con normalidad."
+    ),
+}
 
-conversation_lock = threading.Lock()
-
-
-def reset_messages():
-    global messages, chat_history
-
-    chat_history = []
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Eres un agente que juega a una aventura de texto. "
-                "Puedes usar herramientas como new_game, look, move, inventory, examine, take, drop, use, open, close y read. "
-                "El usuario puede hablar en lenguaje natural, pero tú debes convertir sus intenciones en herramientas del juego. "
-                "No inventes el estado del juego: basa tu respuesta en el resultado real de las herramientas. "
-                "Si el usuario pide iniciar la partida, usa new_game y después look. "
-                "Si el usuario pide mirar alrededor, usa look. "
-                "Si el usuario pide ir a una dirección, usa move. "
-                "Si el usuario pide mirar un objeto concreto, usa examine. "
-                "Si el usuario pide coger algo, usa take. "
-                "Si el usuario pide usar algo, usa use."
-            )
-        }
-    ]
+# Estado por sesion de navegador: sid -> {"messages": [...], "chat": [...]}
+_STATE: dict[str, dict] = {}
 
 
-def run_llm_tool_loop(max_steps=5):
-    global messages
+def _state(sid: str) -> dict:
+    if sid not in _STATE:
+        _STATE[sid] = {"messages": [dict(SYSTEM_PROMPT)], "chat": []}
+    return _STATE[sid]
 
-    for step in range(max_steps):
+
+def run_llm_tool_loop(sid: str, max_steps: int = MAX_STEPS) -> str:
+    messages = _state(sid)["messages"]
+
+    for _ in range(max_steps):
         response = call_llm(messages)
 
-        print("=" * 80, flush=True)
-        print(f"RESPUESTA LLM PASO {step + 1}", flush=True)
-        print(json.dumps(response, ensure_ascii=False, indent=2), flush=True)
-
-        if "error" in response:
-            return f"Error en llamada al LLM: {response['error']}"
+        if isinstance(response, dict) and "error" in response and "choices" not in response:
+            return f"Error en la llamada al LLM: {response['error']}"
 
         choices = response.get("choices", [])
         if not choices:
-            return "Error: el modelo no devolvió choices."
+            return "Error: el modelo no devolvio 'choices'."
 
         msg = choices[0].get("message", {})
-        if not msg:
-            return "Error: el modelo no devolvió message."
 
-        tool_calls = msg.get("tool_calls")
-
-        if not tool_calls:
+        # Sin tool_calls -> respuesta final
+        if not msg.get("tool_calls"):
             messages.append(msg)
-            return msg.get("content") or "Sin respuesta final del modelo."
+            return msg.get("content") or "Sin respuesta."
 
+        # Hay tool_calls: hay que responder a CADA tool_call_id
         messages.append(msg)
-
-        for tool_call in tool_calls:
-            tool_call_id = tool_call["id"]
-            function = tool_call.get("function", {})
-            tool_name = function.get("name")
-            raw_args = function.get("arguments", "{}")
-
+        for tool_call in msg["tool_calls"]:
+            tool_name = tool_call["function"]["name"]
             try:
-                args = json.loads(raw_args)
+                tool_args = json.loads(tool_call["function"].get("arguments", "{}") or "{}")
             except Exception:
-                args = {}
-
-            print("-" * 80, flush=True)
-            print(f"TOOL CALL: {tool_name}", flush=True)
-            print(f"ARGS: {args}", flush=True)
+                tool_args = {}
 
             try:
-                result = call_tool(tool_name, args)
+                result = call_tool(tool_name, tool_args, session_id=sid)
             except Exception as e:
-                result = {
-                    "ok": False,
-                    "error": str(e)
-                }
+                result = {"ok": False, "error": str(e)}
 
-            print("RESULTADO TOOL:", flush=True)
-            print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
-
-            tool_message = {
+            messages.append({
                 "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": json.dumps(result, ensure_ascii=False)
-            }
+                "tool_call_id": tool_call["id"],
+                "content": json.dumps(result, ensure_ascii=False),
+            })
 
-            messages.append(tool_message)
-
-            print("MENSAJE TOOL AÑADIDO AL HISTORIAL:", flush=True)
-            print(json.dumps(tool_message, ensure_ascii=False, indent=2), flush=True)
-
-    return (
-        "He ejecutado varias herramientas, pero el modelo no ha producido "
-        "una respuesta final. Posible bucle de tool-calls."
-    )
+    return ("He ejecutado varias herramientas pero el modelo no produjo una "
+            "respuesta final (posible bucle de tool-calls).")
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    global messages, chat_history
+    if "sid" not in session:
+        session["sid"] = uuid.uuid4().hex
+    sid = session["sid"]
+    st = _state(sid)
 
     if request.method == "POST":
         user_input = request.form.get("message", "").strip()
+        if user_input:
+            st["chat"].append({"role": "user", "content": user_input})
+            st["messages"].append({"role": "user", "content": user_input})
+            final_text = run_llm_tool_loop(sid)
+            st["chat"].append({"role": "assistant", "content": final_text})
 
-        if not user_input:
-            return redirect(url_for("index"))
-
-        with conversation_lock:
-            chat_history.append(
-                {
-                    "role": "user",
-                    "content": user_input
-                }
-            )
-
-            messages.append(
-                {
-                    "role": "user",
-                    "content": user_input
-                }
-            )
-
-            final_text = run_llm_tool_loop(max_steps=5)
-
-            chat_history.append(
-                {
-                    "role": "assistant",
-                    "content": final_text
-                }
-            )
-
-        return redirect(url_for("index"))
-
-    return render_template("index.html", messages=chat_history)
-
-
-@app.route("/reset", methods=["POST"])
-def reset():
-    with conversation_lock:
-        reset_messages()
-
-    return redirect(url_for("index"))
+    return render_template("index.html", messages=st["chat"])
 
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=False,
-        use_reloader=False
-    )
+    app.run(host="0.0.0.0", port=5000, debug=True)

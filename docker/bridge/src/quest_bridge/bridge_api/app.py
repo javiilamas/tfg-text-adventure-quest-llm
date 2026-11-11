@@ -40,54 +40,18 @@ async def _get_text_area(page: Page) -> str:
 
 
 async def _find_command_input(page: Page):
-    selectors = [
-        "input[type='text']:visible",
-        "input:not([type='file']):visible",
-        "textarea:visible",
-        "[contenteditable='true']:visible",
-        "#txtCommand:visible",
-        ".cmdinput:visible",
-        ".commandinput:visible"
-    ]
+    """
+    Busca el input donde se escriben comandos en el WebPlayer.
+    Normalmente es el último input visible.
+    """
+    inputs = page.locator("input:visible")
+    count = await inputs.count()
 
-    for selector in selectors:
-        locator = page.locator(selector)
-        count = await locator.count()
+    if count == 0:
+        raise RuntimeError("No encuentro ningún input visible para escribir comandos.")
 
-        if count > 0:
-            print(f"Input encontrado con selector: {selector}", flush=True)
-            return locator.nth(count - 1)
+    return inputs.nth(count - 1)
 
-    body_text = await page.inner_text("body")
-    raise RuntimeError(
-        "No encuentro ningún input visible para escribir comandos. "
-        f"Texto visible en página: {body_text[:1000]}"
-    )
-
-async def _wait_until_game_ready(page: Page, timeout_seconds: int = 30):
-    for i in range(timeout_seconds):
-        body_text = await page.inner_text("body")
-
-        print(
-            f"Esperando a que el juego esté listo ({i + 1}/{timeout_seconds}): "
-            f"{body_text[:300]}",
-            flush=True
-        )
-
-        try:
-            await _find_command_input(page)
-            print("El juego ya tiene input de comandos visible.", flush=True)
-            return True
-        except Exception:
-            pass
-
-        if "You are in" in body_text or "You can go" in body_text or "Inventory" in body_text:
-            print("El juego parece cargado por texto visible.", flush=True)
-            return True
-
-        await page.wait_for_timeout(1000)
-
-    return False
 
 @app.get("/health")
 async def health():
@@ -120,50 +84,55 @@ async def session_new(body: NewSessionRequest):
         context = await browser.new_context()
         page = await context.new_page()
 
-        url = f"{WEBPLAYER_URL}/dev/open"
-        print(f"Abriendo Quest WebPlayer en {url}", flush=True)
+        await page.goto(WEBPLAYER_URL, wait_until="networkidle")
+        await page.wait_for_timeout(1500)
 
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
-        # Esperamos a que la página deje de estar en Loading...
-        for i in range(30):
-            body_text = await page.inner_text("body")
-            print(f"Esperando página Quest ({i + 1}/30): {body_text[:200]}", flush=True)
-
-            file_input = page.locator('input[type="file"]')
-            if await file_input.count() > 0:
-                break
-
-            if "Loading..." not in body_text and "Loading" not in body_text:
-                break
-
-            await page.wait_for_timeout(1000)
-
-        await page.wait_for_timeout(1000)
-
-        # Ahora intentamos encontrar el input de archivo
+        # Intento 1: cargar directamente mediante input[type=file].
+        # Esta es la forma más robusta si el input existe en el DOM.
         file_input = page.locator('input[type="file"]')
 
         if await file_input.count() > 0:
-            print(f"Cargando archivo .quest desde: {body.questFilePath}", flush=True)
             await file_input.first.set_input_files(body.questFilePath)
+
         else:
-            body_text = await page.inner_text("body")
-            raise RuntimeError(
-                "No encontré input[type=file] para cargar archivo. "
-                f"Texto visible en página: {body_text[:1000]}"
-            )
+            # Intento 2: buscar botón/enlace visible para abrir selector de archivos.
+            # No usamos "Browse" porque en Quest Viva aparece en un texto oculto/fallback.
+            candidates = [
+                "Open a file",
+                "Open file",
+                "Choose file"
+            ]
 
-        ready = await _wait_until_game_ready(page, timeout_seconds=30)
+            loaded = False
 
-        final_text = await page.inner_text("body")
-        print(f"Texto tras cargar juego: {final_text[:1000]}", flush=True)
+            for text in candidates:
+                locator = page.get_by_text(text, exact=False)
+                count = await locator.count()
 
-        if not ready:
-            raise RuntimeError(
-                "El archivo .quest se cargó, pero no apareció el input de comandos. "
-                f"Texto visible: {final_text[:1000]}"
-            )
+                for i in range(count):
+                    candidate = locator.nth(i)
+
+                    if await candidate.is_visible():
+                        async with page.expect_file_chooser() as fc_info:
+                            await candidate.click()
+
+                        chooser = await fc_info.value
+                        await chooser.set_files(body.questFilePath)
+                        loaded = True
+                        break
+
+                if loaded:
+                    break
+
+            if not loaded:
+                body_text = await page.inner_text("body")
+                raise RuntimeError(
+                    "No encontré input[type=file] ni botón visible para cargar archivo. "
+                    f"Texto visible en página: {body_text[:1000]}"
+                )
+
+        # Damos tiempo a que Quest cargue el juego.
+        await page.wait_for_timeout(2500)
 
         SESSIONS[body.sessionId] = {
             "playwright": p,
@@ -175,8 +144,7 @@ async def session_new(body: NewSessionRequest):
         return {
             "ok": True,
             "sessionId": body.sessionId,
-            "message": "Quest loaded in WebPlayer",
-            "text": final_text
+            "message": "Quest loaded in WebPlayer"
         }
 
     except Exception as e:
@@ -202,19 +170,10 @@ async def session_command(body: CommandRequest):
 
         before = await _get_text_area(page)
 
-        try:
-            cmd_input = await _find_command_input(page)
-            await cmd_input.click()
-            await cmd_input.fill(body.text)
-            await cmd_input.press("Enter")
-        except Exception as e:
-            after_error = await _get_text_area(page)
-
-            return {
-                "ok": False,
-                "error": str(e),
-                "output": after_error
-            }
+        cmd_input = await _find_command_input(page)
+        await cmd_input.click()
+        await cmd_input.fill(body.text)
+        await cmd_input.press("Enter")
 
         # Espera provisional. Más adelante puede sustituirse por estabilización del DOM.
         await page.wait_for_timeout(600)

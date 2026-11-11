@@ -4,9 +4,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      Dev__Enabled: "true"
-      ASPNETCORE_ENVIRONMENT: "Development"
-    
+      Home__File: "/data/game.quest"
+    volumes:
+      - "./docker/quest-webplayer/data:/data:ro"
 
   bridge-api:
     build:
@@ -16,11 +16,10 @@ services:
       - "8787:8787"
     environment:
       WEBPLAYER_URL: "http://quest-webplayer:8080"
-      QUEST_FILE_PATH: "/app/game.quest"
-    volumes:
-      - ./docker/quest-webplayer/data/game.quest:/app/game.quest:ro
+      QUEST_FILE_PATH: "/app/src/quest-juegos/juego_prueba.quest"
     depends_on:
       - quest-webplayer
+
   web-app:
     build:
       context: ./docker/web
@@ -29,8 +28,13 @@ services:
       - "8100:5000"
     environment:
       BRIDGE_BASE: "http://bridge-api:8787"
-      QUEST_FILE_PATH: "/app/game.quest"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openai/gpt-4o-mini}"
+      # --- Frotz / multi-motor (nuevo) ---
+      FROTZ_BIN: "/usr/games/dfrotz"
+      MINIZORK_PATH: "/app/games/zmachine/minizork.z5"
+      ZORK1_PATH: "/app/games/zmachine/zork1.z3"
+      LLM_MAX_STEPS: "6"
+      FLASK_SECRET: "${FLASK_SECRET:-tfg-dev-secret-change-me}"
     depends_on:
       - bridge-api

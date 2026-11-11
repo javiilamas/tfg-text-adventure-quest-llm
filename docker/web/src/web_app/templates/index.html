@@ -1,28 +1,37 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>TFG - Chat Quest</title>
+    <meta charset="utf-8">
+    <title>TFG - Aventuras conversacionales (Quest + Frotz)</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 12px; }
+        h2 { margin-bottom: 4px; }
+        .hint { color:#666; font-size: 0.9em; margin-top:0; }
+        .chat { border:1px solid #ddd; border-radius:8px; padding:12px; min-height:240px; }
+        .user { margin: 8px 0; }
+        .assistant { margin: 8px 0; white-space: pre-wrap; }
+        .user b { color:#1a5; }
+        .assistant b { color:#15a; }
+        form { display:flex; gap:8px; margin-top:12px; }
+        input[type=text]{ flex:1; padding:8px; }
+        button{ padding:8px 16px; }
+    </style>
 </head>
 <body>
-
-    <h2>Chat con el juego</h2>
-
-    <div>
+    <h2>Aventuras conversacionales</h2>
+    <p class="hint">Motores: Quest Viva y Frotz (Z-machine). Prueba: "que juegos hay", "juega a minizork", "abre el buzon".</p>
+    <div class="chat">
         {% for msg in messages %}
             {% if msg.role == "user" %}
-                <p><b>Tú:</b> {{ msg.content }}</p>
-            {% elif msg.role == "assistant" and msg.content %}
-                <p><b>IA:</b> {{ msg.content }}</p>
+                <div class="user"><b>Tu:</b> {{ msg.content }}</div>
+            {% elif msg.role == "assistant" %}
+                <div class="assistant"><b>IA:</b> {{ msg.content }}</div>
             {% endif %}
         {% endfor %}
     </div>
-
-    <hr>
-
     <form method="POST">
-        <input type="text" name="message" style="width:300px;" required>
+        <input type="text" name="message" placeholder="Escribe en lenguaje natural..." autofocus required>
         <button type="submit">Enviar</button>
     </form>
-
 </body>
 </html>

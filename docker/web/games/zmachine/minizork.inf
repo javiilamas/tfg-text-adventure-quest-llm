@@ -1,0 +1,88 @@
+! minizork.inf - ORIGINAL demo game for the TFG (Frotz engine). ASCII only.
+! No external library: uses only the Z-machine read/print primitives so it
+! compiles with a bare inform6 and runs under dfrotz. Text is original.
+
+Constant Story "MINIZORK-DEMO";
+
+Global loc = 0;
+Global mailbox_open = 0;
+Global have_leaflet = 0;
+
+Array buffer -> 102;
+Array parse  -> 32;
+
+[ DescribeRoom;
+  switch (loc) {
+    0: print "^West of House^^";
+       print "You are in an open field west of a white house, with a boarded front door.^";
+       print "A small mailbox sits here.^";
+       print "Exits lead north, south and west.^";
+    1: print "^North of House^^";
+       print "You stand at the north side of the white house. The windows are barred.^";
+       print "Exits lead south and east.^";
+    2: print "^South of House^^";
+       print "You stand at the south side of the white house.^";
+       print "Exits lead north and east.^";
+    3: print "^Forest^^";
+       print "A dim forest of tall trees. A narrow path leads east.^";
+       print "Exits lead east.^";
+    4: print "^Behind House^^";
+       print "You are behind the white house. A window here is slightly ajar.^";
+       print "Exits lead north, south and west.^";
+  }
+];
+
+[ Go dir dest;
+  dest = (-1);
+  switch (loc) {
+    0: if (dir=='north' or 'n') dest=1;
+       else if (dir=='south' or 's') dest=2;
+       else if (dir=='west' or 'w') dest=3;
+       else if (dir=='east' or 'e') { print "The front door is boarded; you can't go east.^"; return; }
+    1: if (dir=='south' or 's') dest=0;
+       else if (dir=='east' or 'e') dest=4;
+    2: if (dir=='north' or 'n') dest=0;
+       else if (dir=='east' or 'e') dest=4;
+    3: if (dir=='east' or 'e') dest=0;
+    4: if (dir=='north' or 'n') dest=1;
+       else if (dir=='south' or 's') dest=2;
+       else if (dir=='west' or 'w') dest=0;
+  }
+  if (dest == (-1)) { print "You can't go that way.^"; return; }
+  loc = dest;
+  DescribeRoom();
+];
+
+[ Main w1 w2 n;
+  buffer->0 = 100;
+  parse->0  = 10;
+  print "^MINIZORK -- original demo world for the TFG Frotz engine.^";
+  print "Commands: LOOK, NORTH/SOUTH/EAST/WEST, OPEN MAILBOX, READ LEAFLET, INVENTORY, QUIT.^";
+  DescribeRoom();
+  while (true) {
+     print "^>";
+     read buffer parse;
+     n = parse->1;
+     if (n == 0) { print "Say something.^"; continue; }
+     w1 = parse-->1;
+     if (n >= 2) w2 = parse-->3; else w2 = 0;
+     if (w1=='look' or 'l') DescribeRoom();
+     else if (w1=='north' or 'n' or 'south' or 's' or 'east' or 'e' or 'west' or 'w') Go(w1);
+     else if (w1=='go' or 'walk' && w2) Go(w2);
+     else if (w1=='open' && w2=='mailbox') {
+        if (loc ~= 0) print "There is no mailbox here.^";
+        else if (mailbox_open) print "The mailbox is already open.^";
+        else { mailbox_open=1; print "Opening the small mailbox reveals a leaflet.^"; }
+     }
+     else if ((w1=='read' or 'take') && w2=='leaflet') {
+        if (loc ~= 0 || mailbox_open == 0) print "You see no leaflet here.^";
+        else if (w1=='take') { have_leaflet=1; print "Taken.^"; }
+        else print "~WELCOME TO MINIZORK. This original demo proves the Frotz engine works end to end.~^";
+     }
+     else if (w1=='inventory' or 'i') {
+        if (have_leaflet) print "You are carrying a leaflet.^"; else print "You are empty-handed.^";
+     }
+     else if (w1=='quit' or 'q') { print "Goodbye.^"; @quit; }
+     else print "I don't understand that command.^";
+  }
+];
