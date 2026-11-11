@@ -108,46 +108,45 @@
   var vstat=document.getElementById('vstat');
   function status(msg,kind){ if(vstat){ vstat.textContent=msg||''; vstat.className=kind||''; } }
 
-  /* ---------- Voz -> Texto (STT). El listener se engancha SIEMPRE para que el
-     boton reaccione aunque el navegador no soporte voz. ---------- */
+  /* ---------- Voz -> Texto (STT): maquina de estados robusta ----------
+     Arregla el error "recognition has already started": el boton hace toggle
+     (encender/apagar) y, si el motor se queda bloqueado, se auto-reinicia. */
   var micBtn=document.getElementById('micBtn');
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var rec=null, recording=false;
+  var rec=null, recState='idle', pendingStart=false;   // idle | starting | listening
 
-  function buildRec(){
-    var r=new SR();
-    r.lang='es-ES'; r.interimResults=false; r.maxAlternatives=1; r.continuous=false;
-    r.onstart=function(){ recording=true; micBtn.classList.add('rec'); micBtn.textContent='⏺'; status('🎙️ Escuchando… habla ahora.','rec'); };
-    r.onend=function(){ recording=false; micBtn.classList.remove('rec'); micBtn.textContent='🎤'; };
-    r.onerror=function(ev){
-      recording=false; micBtn.classList.remove('rec'); micBtn.textContent='🎤';
-      var map={'not-allowed':'Permiso de micrófono denegado. Pulsa el candado de la barra de direcciones y permite el micrófono, luego recarga.',
-               'service-not-allowed':'El navegador bloqueó el micrófono.',
-               'no-speech':'No te he oído. Pulsa 🎤 e inténtalo otra vez.',
-               'audio-capture':'No se detecta micrófono. Conecta uno y reintenta.',
-               'network':'Sin conexión para el reconocimiento de voz.',
-               'aborted':''};
-      status(map.hasOwnProperty(ev.error)? map[ev.error] : ('Error de voz: '+ev.error), 'err');
-    };
-    r.onresult=function(ev){ var t=ev.results[0][0].transcript||''; if(input) input.value=t; status('Has dicho: “'+t+'”'); if(t.trim()) document.getElementById('sayForm').submit(); };
-    return r;
+  function mapErr(code){
+    var m={'not-allowed':'Permiso de microfono denegado. Pulsa el candado de la barra de direcciones, permite el microfono y recarga.',
+           'service-not-allowed':'El navegador bloqueo el microfono.',
+           'no-speech':'No te he oido. Pulsa el microfono e intentalo otra vez.',
+           'audio-capture':'No se detecta microfono. Conecta uno y reintenta.',
+           'network':'Sin conexion para el reconocimiento de voz.'};
+    return m.hasOwnProperty(code)? m[code] : ('Error de voz: '+code);
   }
-
-  micBtn.addEventListener('click', function(){
-    try{
-      if(!SR){ status('Tu navegador no soporta dictado por voz. Usa Chrome o Microsoft Edge (y abre la web en http://localhost:8100).','err'); return; }
-      var host=location.hostname;
-      if(location.protocol!=='https:' && host!=='localhost' && host!=='127.0.0.1'){
-        status('El micrófono solo funciona en https o en localhost. Abre http://localhost:8100','err'); return;
-      }
-      if(recording){ try{ rec.stop(); }catch(e){} return; }
-      if(!rec) rec=buildRec();
-      status('Activando micrófono… (acepta el permiso si te lo pide)','rec');
-      rec.start();
-    }catch(e){
-      try{ if(rec) rec.stop(); }catch(_){}
-      status('No se pudo iniciar el micrófono ('+(e&&e.message||e)+'). Pulsa 🎤 de nuevo.','err');
+  function ensureRec(){
+    if(rec) return;
+    rec=new SR(); rec.lang='es-ES'; rec.interimResults=false; rec.maxAlternatives=1; rec.continuous=false;
+    rec.onstart=function(){ recState='listening'; micBtn.classList.add('rec'); micBtn.textContent='\u23FA'; status('\uD83C\uDF99\uFE0F Escuchando... habla ahora.','rec'); };
+    rec.onresult=function(ev){ var t=(ev.results[0][0].transcript||''); if(input) input.value=t; status('Has dicho: \u201C'+t+'\u201D'); if(t.trim()){ try{ document.getElementById('sayForm').submit(); }catch(e){} } };
+    rec.onerror=function(ev){ if(ev.error && ev.error!=='aborted') status(mapErr(ev.error),'err'); };
+    rec.onend=function(){ recState='idle'; micBtn.classList.remove('rec'); micBtn.textContent='\uD83C\uDFA4';
+       if(pendingStart){ pendingStart=false; setTimeout(beginRec,220); } };
+  }
+  function beginRec(){
+    ensureRec();
+    if(recState==='listening' || recState==='starting') return;
+    try{ rec.start(); recState='starting'; status('Activando microfono... acepta el permiso si te lo pide.','rec'); }
+    catch(e){
+      if(/already started/i.test(''+e)){ pendingStart=true; try{ rec.abort(); }catch(_){} status('Reiniciando microfono...','rec'); }
+      else status('No se pudo iniciar el microfono ('+((e&&e.message)||e)+').','err');
     }
+  }
+  micBtn.addEventListener('click', function(){
+    if(!SR){ status('Tu navegador no soporta dictado por voz. Usa Chrome o Microsoft Edge.','err'); return; }
+    var host=location.hostname;
+    if(location.protocol!=='https:' && host!=='localhost' && host!=='127.0.0.1'){ status('El microfono solo funciona en https o en localhost. Abre http://localhost:8100','err'); return; }
+    if(recState==='listening' || recState==='starting'){ try{ rec.stop(); }catch(e){} status('Microfono detenido.'); return; }
+    beginRec();
   });
 
   /* ---------- Texto -> Voz (TTS) ---------- */
